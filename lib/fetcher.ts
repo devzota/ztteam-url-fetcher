@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
+
 import {
   ztteam_validateUrl,
   ztteam_sanitizeUrl,
@@ -51,8 +52,9 @@ function ztteam_parseReadability(
   contentHtml: string;
   excerpt: string;
 } {
-  const dom = new JSDOM(html, { url });
-  const reader = new Readability(dom.window.document);
+  const { document } = parseHTML(html);
+  document.baseURI ?? url;
+  const reader = new Readability(document as unknown as Document);
   const article = reader.parse();
 
   if (!article) {
