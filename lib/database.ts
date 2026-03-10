@@ -57,7 +57,13 @@ export interface ZTTeamArticle {
   social_post: string | null;
   image_new: string | null;
   audio_path: string | null;
+  content_new: string | null;
+  large_title: string | null;
+  small_title: string | null;
   video_path: string | null;
+  video_folder: string | null;
+  wp_link: string | null;
+  fanpage_done: number;
   created_at: string;
   updated_at: string;
 }
@@ -147,32 +153,46 @@ export function ztteam_updateGeneratedContent(
     social_post?: string | null;
     image_new?: string | null;
     audio_path?: string | null;
+    large_title?: string | null;
+    small_title?: string | null;
+    content_new?: string | null;
   },
 ): ZTTeamArticle | undefined {
   const current = ztteam_getArticleById(id);
   if (!current) return undefined;
-
   db.prepare(
     `
     UPDATE ztteam_articles
-    SET
-      title_new = ?,
-      script = ?,
-      social_post = ?,
-      image_new = ?,
-      audio_path = ?,
-      status = 'ready',
-      updated_at = datetime('now', '+7 hours')
-    WHERE id = ?
+    SET title_new = @title_new,
+        script = @script,
+        social_post = @social_post,
+        image_new = @image_new,
+        audio_path = @audio_path,
+        content_new = @content_new,
+        large_title = @large_title,
+        small_title = @small_title,
+        status = 'ready',
+        updated_at = datetime('now', '+7 hours')
+    WHERE id = @id
   `,
-  ).run(
-    data.title_new !== undefined ? data.title_new : current.title_new,
-    data.script !== undefined ? data.script : current.script,
-    data.social_post !== undefined ? data.social_post : current.social_post,
-    data.image_new !== undefined ? data.image_new : current.image_new,
-    data.audio_path !== undefined ? data.audio_path : current.audio_path,
+  ).run({
+    title_new:
+      data.title_new !== undefined ? data.title_new : current.title_new,
+    script: data.script !== undefined ? data.script : current.script,
+    social_post:
+      data.social_post !== undefined ? data.social_post : current.social_post,
+    image_new:
+      data.image_new !== undefined ? data.image_new : current.image_new,
+    audio_path:
+      data.audio_path !== undefined ? data.audio_path : current.audio_path,
+    large_title:
+      data.large_title !== undefined ? data.large_title : current.large_title,
+    small_title:
+      data.small_title !== undefined ? data.small_title : current.small_title,
+    content_new:
+      data.content_new !== undefined ? data.content_new : current.content_new,
     id,
-  );
+  });
   return ztteam_getArticleById(id);
 }
 
@@ -284,6 +304,47 @@ export function ztteam_getRecentApiLogs(limit = 20): ZTTeamApiLog[] {
 /** Reset API logs */
 export function ztteam_resetApiLogs(): void {
   db.prepare(`DELETE FROM ztteam_api_logs`).run();
+}
+/** Cập nhật video info sau khi tạo xong */
+export function ztteam_updateVideoInfo(
+  id: number,
+  data: {
+    video_path?: string | null;
+    video_folder?: string | null;
+    wp_link?: string | null;
+  },
+): ZTTeamArticle | undefined {
+  const current = ztteam_getArticleById(id);
+  if (!current) return undefined;
+  db.prepare(
+    `
+    UPDATE ztteam_articles
+    SET
+      video_path = ?,
+      video_folder = ?,
+      wp_link = ?,
+      updated_at = datetime('now', '+7 hours')
+    WHERE id = ?
+  `,
+  ).run(
+    data.video_path !== undefined ? data.video_path : current.video_path,
+    data.video_folder !== undefined ? data.video_folder : current.video_folder,
+    data.wp_link !== undefined ? data.wp_link : current.wp_link,
+    id,
+  );
+  return ztteam_getArticleById(id);
+}
+
+/** Đánh dấu đã đăng Fanpage */
+export function ztteam_markFanpageDone(id: number): ZTTeamArticle | undefined {
+  db.prepare(
+    `
+    UPDATE ztteam_articles
+    SET fanpage_done = 1, updated_at = datetime('now', '+7 hours')
+    WHERE id = ?
+  `,
+  ).run(id);
+  return ztteam_getArticleById(id);
 }
 
 /** Export database instance */

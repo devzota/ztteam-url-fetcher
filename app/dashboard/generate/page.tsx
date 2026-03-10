@@ -28,6 +28,7 @@ interface ZTTeamScriptData {
   socialPost: string;
   largeTitle: string;
   smallTitle: string;
+  contentNew: string;
 }
 
 /** Section card wrapper */
@@ -84,6 +85,41 @@ function ZTTeamCompareRow({
         </div>
       </div>
     </div>
+  );
+}
+/** Chèn ảnh AI vào sau đoạn văn đầu tiên của content */
+function ztteam_buildContentNew(
+  contentHtml: string,
+  imagePath: string | null,
+): string {
+  if (!imagePath) return contentHtml;
+  const imageTag = `<figure class="wp-block-image aligncenter">
+  <img src="${imagePath}" alt="featured image" />
+</figure>`;
+  /** Tìm thẻ block đầu tiên (<p>, <h2>, <h3>) và chèn ảnh sau nó */
+  const firstBlockEnd = Math.min(
+    ...[
+      contentHtml.indexOf("</p>"),
+      contentHtml.indexOf("</h2>"),
+      contentHtml.indexOf("</h3>"),
+    ]
+      .filter((i) => i !== -1)
+      .concat([contentHtml.length]),
+  );
+  const tagLength =
+    contentHtml[firstBlockEnd + 2] === "p"
+      ? 4
+      : contentHtml[firstBlockEnd + 2] === "h"
+        ? 5
+        : 4;
+  if (firstBlockEnd === contentHtml.length)
+    return `${imageTag}\n${contentHtml}`;
+  return (
+    contentHtml.substring(0, firstBlockEnd + tagLength) +
+    "\n" +
+    imageTag +
+    "\n" +
+    contentHtml.substring(firstBlockEnd + tagLength)
   );
 }
 
@@ -163,26 +199,79 @@ export default function ZTTeamGeneratePage() {
 
       /** Step 1: Script */
       const scriptResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash-preview",
         contents: {
           parts: [{ text: `Nội dung yêu cầu: ${selected.content_original}` }],
         },
         config: {
           systemInstruction: `Bạn là AI chuyên tạo kịch bản video ngắn và bài đăng mạng xã hội (Fanpage).
-Nhiệm vụ: Dựa vào NỘI DUNG được cung cấp, hãy tạo kịch bản voice-over cho video ngắn dưới 60 giây VÀ một bài đăng Fanpage kèm theo.
-QUAN TRỌNG: TOÀN BỘ NỘI DUNG PHẢI ĐƯỢC VIẾT BẰNG TIẾNG ANH.
-Yêu cầu kịch bản video: Giọng điệu tin tức, chuyên nghiệp, 100-130 từ, hook mạnh 3 giây đầu.
-Yêu cầu bài đăng Fanpage: Hấp dẫn, có CTA, hashtag, emoji, tuân thủ chính sách Facebook.
-Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
+Nhiệm vụ: Dựa vào NỘI DUNG và HÌNH ẢNH (nếu có) được cung cấp, hãy tạo kịch bản voice-over cho video ngắn dưới 60 giây VÀ một bài đăng Fanpage kèm theo.
+QUAN TRỌNG: TOÀN BỘ NỘI DUNG (Title, Script, Social Post, Large Title, Small Title) PHẢI ĐƯỢC VIẾT BẰNG TIẾNG ANH (ENGLISH).
+LƯU Ý CỰC KỲ QUAN TRỌNG: TUYỆT ĐỐI KHÔNG sử dụng các từ ngữ vi phạm chính sách của Facebook/TikTok (ví dụ: các từ liên quan đến bạo lực, tình dục, cam kết 100%, chữa bệnh, thuốc lá, rượu bia, phân biệt chủng tộc, thù địch, hoặc các từ ngữ nhạy cảm khác dễ bị bóp tương tác). Hãy dùng từ ngữ thay thế an toàn.
+
+Yêu cầu kịch bản video (Script):
+1. GIỌNG ĐIỆU (TONE): Voice-over phải được viết theo phong cách TIN TỨC (News-style) - chuyên nghiệp, khách quan, dứt khoát.
+2. ĐƯA THÔNG TIN CHÍNH LÊN ĐẦU: Nội dung quan trọng nhất, tin tức cốt lõi phải được trình bày ngay lập tức.
+3. Câu mở đầu PHẢI có HOOK gây chú ý mạnh trong 3 giây đầu (như một Breaking News) và đi thẳng vào vấn đề chính.
+4. Tổng thời lượng đọc kịch bản dưới 60 giây (khoảng 100-130 từ).
+5. Chỉ trả về nội dung voice-over liền mạch.
+
+Yêu cầu bài đăng Fanpage (Social Post):
+1. ĐƯA CHỦ ĐỀ CHÍNH LÊN ĐẦU TIÊN: Dòng đầu tiên của bài đăng PHẢI LÀ 1 dòng duy nhất nêu bật chủ đề chính của nội dung.
+2. Viết một bài đăng hấp dẫn để đăng kèm video trên Facebook Fanpage/Instagram/TikTok.
+3. Bao gồm tiêu đề thu hút, nội dung tóm tắt giá trị của video, lời kêu gọi hành động (CTA) và các hashtag phù hợp.
+4. Sử dụng emoji hợp lý để tăng tương tác.
+5. Đảm bảo 100% nội dung bài đăng tuân thủ tiêu chuẩn cộng đồng của Facebook, không chứa từ khóa bị cấm.
+
+Yêu cầu về Tiêu đề hình ảnh (Large Title & Small Title):
+1. Large Title: Một tiêu đề cực kỳ ngắn gọn (2-4 từ), gây sốc hoặc tóm tắt nội dung chính (ví dụ: "BREAKING NEWS", "MARKET CRASH", "NEW DISCOVERY").
+2. Small Title: Một dòng mô tả ngắn (4-7 từ) bổ sung cho Large Title.
+
+Yêu cầu về Tiêu đề bài viết (Title):
+1. Dựa trên tiêu đề gốc của bài, viết lại bằng Tiếng Anh theo phong cách clickbait news.
+2. Phải hấp dẫn, kích thích click, gây tò mò, phù hợp site tin tức nóng hổi.
+3. Độ dài 8-15 từ.
+4. KHÔNG viết kiểu tiêu đề video ngắn (2-4 từ).
+5. Ví dụ tốt: "Trump's Shocking Decision Leaves Washington in Chaos — Here's What Really Happened"
+
+Yêu cầu nội dung bài viết web (Content New):
+1. Dựa trên nội dung gốc, viết lại hoàn toàn bằng Tiếng Anh theo phong cách báo chí chuyên nghiệp.
+2. Hấp dẫn, thu hút, SEO-friendly, phù hợp đăng web tin tức.
+3. Cấu trúc rõ ràng với heading, đoạn văn, danh sách nếu cần.
+4. TUYỆT ĐỐI không dùng từ ngữ vi phạm chính sách Google AdSense (bạo lực, tình dục, cờ bạc, thuốc lá, rượu bia...).
+5. Trả về HTML thuần dùng thẻ <p>, <h2>, <h3>, <strong>, <ul>, <li>. KHÔNG có <html>, <head>, <body>.`,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              title: { type: Type.STRING },
-              script: { type: Type.STRING },
-              socialPost: { type: Type.STRING },
-              largeTitle: { type: Type.STRING },
-              smallTitle: { type: Type.STRING },
+              title: {
+                type: Type.STRING,
+                description:
+                  "Tiêu đề bài viết tin tức (bằng Tiếng Anh). Dựa trên title gốc, viết lại theo phong cách clickbait news - hấp dẫn, kích thích click, gây tò mò, phù hợp với site tin tức nóng hổi. Độ dài 8-15 từ. KHÔNG viết kiểu tiêu đề video ngắn.",
+              },
+              script: {
+                type: Type.STRING,
+                description:
+                  "Toàn bộ nội dung voice-over liền mạch bằng Tiếng Anh, phong cách bản tin thời sự.",
+              },
+              socialPost: {
+                type: Type.STRING,
+                description:
+                  "Nội dung bài đăng Fanpage (caption) bằng Tiếng Anh, bao gồm CTA và hashtags.",
+              },
+              largeTitle: {
+                type: Type.STRING,
+                description: "Tiêu đề lớn cho hình ảnh (2-4 từ, Tiếng Anh)",
+              },
+              smallTitle: {
+                type: Type.STRING,
+                description: "Tiêu đề nhỏ cho hình ảnh (4-7 từ, Tiếng Anh)",
+              },
+              contentNew: {
+                type: Type.STRING,
+                description:
+                  "Nội dung bài viết tin tức bằng Tiếng Anh. Dựa trên nội dung gốc, viết lại hoàn toàn theo phong cách báo chí chuyên nghiệp, hấp dẫn, SEO-friendly. TUYỆT ĐỐI không dùng từ ngữ vi phạm chính sách Google AdSense hoặc Facebook. Trả về HTML thuần (dùng <p>, <h2>, <h3>, <strong>, <ul>, <li>). KHÔNG có <html>, <head>, <body>.",
+              },
             },
             required: [
               "title",
@@ -190,6 +279,7 @@ Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
               "socialPost",
               "largeTitle",
               "smallTitle",
+              "contentNew",
             ],
           },
         },
@@ -229,24 +319,31 @@ Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
               });
 
               const imageResponse = await ai.models.generateContent({
-                model: "gemini-2.0-flash-exp-image-generation",
+                model: "gemini-2.5-flash-image",
                 contents: {
                   parts: [
                     { inlineData: { data: base64, mimeType: imgBlob.type } },
                     {
-                      text: `Redraw this image beautifully for a breaking news thumbnail.
-- Professional news studio background (blue/red/white theme).
-- Remove ALL existing logos, text, watermarks.
-- Add breaking news graphic frame.
-- Large title: "${parsedScript.largeTitle}"
-- Small title: "${parsedScript.smallTitle}"
-- Keep text in upper 75% of image, bottom 25% clear for subtitles.
-- Square 1:1 aspect ratio, no white borders.`,
+                      text: `Redraw this image to be beautiful and sharp.
+- Change the background to a professional news studio setting.
+- Change the background color to a vibrant news-style theme (blue/red/white).
+- Change the character's clothes to a professional news anchor suit.
+- Add a professional 'BREAKING NEWS' graphic frame.
+- CRITICAL: REMOVE ALL EXISTING LOGOS, TEXT, AND WATERMARKS FROM THE ORIGINAL IMAGE.
+- Add a prominent news-style title overlay.
+- CRITICAL: The image must fill the entire 1:1 canvas completely. Do not leave any white space, borders, or padding around the image. The background must be fully covered.
+- The large title text should be: "${parsedScript.largeTitle}".
+- The small title text should be: "${parsedScript.smallTitle}".
+- IMPORTANT: Place all text and titles in the UPPER HALF or MIDDLE of the image. Keep the BOTTOM 25% of the image COMPLETELY CLEAR of any text or important graphics to allow space for video subtitles later.
+- Ensure the text is clear, professional, and readable.
+- The overall style should be high-quality, professional news broadcast.`,
                     },
                   ],
                 },
                 config: {
-                  responseModalities: [Modality.IMAGE, Modality.TEXT],
+                  imageConfig: {
+                    aspectRatio: "1:1",
+                  },
                 },
               });
 
@@ -271,7 +368,7 @@ Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
                     const imgUsage = imageResponse.usageMetadata;
                     await ztteam_logApiUsage({
                       article_id: selected.id,
-                      model: "gemini-2.0-flash-exp-image-generation",
+                      model: "gemini-2.5-flash-image",
                       type: "image",
                       input_tokens: imgUsage?.promptTokenCount || 0,
                       output_tokens: imgUsage?.candidatesTokenCount || 0,
@@ -411,6 +508,12 @@ Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
             social_post: scriptData.socialPost,
             image_new: imagePathRef.current || generatedImage || null,
             audio_path: audioPathRef.current || null,
+            large_title: scriptData.largeTitle || null,
+            small_title: scriptData.smallTitle || null,
+            content_new: ztteam_buildContentNew(
+              scriptData.contentNew || "",
+              imagePathRef.current || generatedImage || null,
+            ),
           },
         }),
       });
@@ -644,6 +747,22 @@ Large Title: 2-4 từ gây sốc. Small Title: 4-7 từ bổ sung.`,
                   <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
                     {scriptData.socialPost}
                   </p>
+                ) : (
+                  <p className="text-sm text-slate-600 italic">
+                    Chưa có — nhấn Generate
+                  </p>
+                )}
+              </ZTTeamCard>
+              {/** Content mới */}
+              <ZTTeamCard
+                title="Nội dung bài viết web"
+                accent={!!scriptData?.contentNew}
+              >
+                {scriptData?.contentNew ? (
+                  <div
+                    className="text-sm text-slate-300 leading-relaxed prose prose-invert prose-headings:text-white prose-p:text-slate-300 prose-strong:text-white prose-li:text-slate-300 max-w-none max-h-96 overflow-y-auto"
+                    dangerouslySetInnerHTML={{ __html: scriptData.contentNew }}
+                  />
                 ) : (
                   <p className="text-sm text-slate-600 italic">
                     Chưa có — nhấn Generate

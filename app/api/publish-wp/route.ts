@@ -42,18 +42,45 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     /** Upload featured image nếu có */
     let featuredMediaId: number | null = null;
+    let featuredMediaUrl: string | null = null;
+
     if (featuredImageUrl) {
-      featuredMediaId = await ztteam_uploadFeaturedImage(
+      const uploadResult = await ztteam_uploadFeaturedImage(
         featuredImageUrl,
         siteUrl,
         credentials,
+      );
+      featuredMediaId = uploadResult?.id || null;
+      featuredMediaUrl = uploadResult?.url || null;
+    }
+
+    /** Thay thế URL ảnh local trong content bằng URL WordPress */
+    let finalContent = content;
+    /** Strip query string để match đúng trong content */
+    const cleanFeaturedUrl = featuredImageUrl
+      ? featuredImageUrl.split("?")[0]
+      : null;
+    console.log("featuredImageUrl:", featuredImageUrl);
+    console.log("cleanFeaturedUrl:", cleanFeaturedUrl);
+    console.log("featuredMediaUrl:", featuredMediaUrl);
+    console.log(
+      "content includes image:",
+      content.includes(cleanFeaturedUrl || ""),
+    );
+    if (featuredMediaUrl && cleanFeaturedUrl) {
+      finalContent = content.replace(
+        new RegExp(
+          cleanFeaturedUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "g",
+        ),
+        featuredMediaUrl,
       );
     }
 
     /** Tạo bài viết */
     const postData: Record<string, unknown> = {
       title,
-      content,
+      content: finalContent,
       status: "publish",
     };
 
@@ -98,20 +125,38 @@ async function ztteam_uploadFeaturedImage(
   imageUrl: string,
   siteUrl: string,
   credentials: string,
-): Promise<number | null> {
+): Promise<{ id: number; url: string } | null> {
   try {
-    /** Fetch ảnh từ URL gốc */
-    const imageResponse = await fetch(imageUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
+    /** Fetch ảnh — hỗ trợ cả URL local (Next.js) và URL bên ngoài */
+    let imageBuffer: ArrayBuffer;
+    let contentType: string;
+    let filename: string;
 
-    if (!imageResponse.ok) return null;
-
-    const imageBuffer = await imageResponse.arrayBuffer();
-    const contentType =
-      imageResponse.headers.get("Content-Type") || "image/jpeg";
-    const filename =
-      imageUrl.split("/").pop()?.split("?")[0] || "featured-image.jpg";
+    if (imageUrl.startsWith("/")) {
+      /** Ảnh local từ Next.js public folder */
+      const fs = await import("fs");
+      const path = await import("path");
+      /** Strip query string trước khi đọc file */
+      const cleanImageUrl = imageUrl.split("?")[0];
+      const localPath = path.join(process.cwd(), "public", cleanImageUrl);
+      const fileBuffer = fs.readFileSync(localPath);
+      imageBuffer = fileBuffer.buffer.slice(
+        fileBuffer.byteOffset,
+        fileBuffer.byteOffset + fileBuffer.byteLength,
+      );
+      contentType = "image/png";
+      filename = cleanImageUrl.split("/").pop() || "featured-image.png";
+    } else {
+      /** Ảnh từ URL bên ngoài */
+      const imageResponse = await fetch(imageUrl, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      if (!imageResponse.ok) return null;
+      imageBuffer = await imageResponse.arrayBuffer();
+      contentType = imageResponse.headers.get("Content-Type") || "image/jpeg";
+      filename =
+        imageUrl.split("/").pop()?.split("?")[0] || "featured-image.jpg";
+    }
 
     /** Upload lên WP Media */
     const uploadResponse = await fetch(`${siteUrl}/wp-json/wp/v2/media`, {
@@ -127,11 +172,15 @@ async function ztteam_uploadFeaturedImage(
     if (!uploadResponse.ok) return null;
 
     const media = await uploadResponse.json();
-    return media.id || null;
+    return {
+      id: media.id,
+      url: media.source_url,
+    };
   } catch {
     return null;
   }
 }
+
 /** Kiểm tra bài viết đã tồn tại theo title */
 async function ztteam_checkPostExists(
   title: string,

@@ -102,7 +102,13 @@ export default function ZTTeamReviewPage() {
         );
         setArticles(ready);
         if (ready.length > 0 && !selected) {
-          setSelected(ready[0]);
+          const first = ready[0];
+          setSelected({
+            ...first,
+            image_new: first.image_new
+              ? `${first.image_new}?t=${Date.now()}`
+              : null,
+          });
         } else if (selected) {
           /** Cập nhật selected nếu đang xem bài vừa update */
           const updated = ready.find(
@@ -160,23 +166,31 @@ export default function ZTTeamReviewPage() {
 
       /** Generate ảnh mới */
       const imageResponse = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp-image-generation",
+        model: "gemini-2.5-flash-image",
         contents: {
           parts: [
             { inlineData: { data: base64, mimeType: imgBlob.type } },
             {
-              text: `Redraw this image beautifully for a breaking news thumbnail.
-- Professional news studio background (blue/red/white theme).
-- Remove ALL existing logos, text, watermarks.
-- Add breaking news graphic frame.
-- Title: "${selected.title_new || selected.title_original}"
-- Keep text in upper 75% of image, bottom 25% clear for subtitles.
-- Square 1:1 aspect ratio, no white borders.`,
+              text: `Redraw this image to be beautiful and sharp.
+- Change the background to a professional news studio setting.
+- Change the background color to a vibrant news-style theme (blue/red/white).
+- Change the character's clothes to a professional news anchor suit.
+- Add a professional 'BREAKING NEWS' graphic frame.
+- CRITICAL: REMOVE ALL EXISTING LOGOS, TEXT, AND WATERMARKS FROM THE ORIGINAL IMAGE.
+- Add a prominent news-style title overlay.
+- CRITICAL: The image must fill the entire 1:1 canvas completely. Do not leave any white space, borders, or padding around the image. The background must be fully covered.
+- The large title text should be: "${selected.large_title || selected.title_new || selected.title_original}".
+- The small title text should be: "${selected.small_title || ""}".
+- IMPORTANT: Place all text and titles in the UPPER HALF or MIDDLE of the image. Keep the BOTTOM 25% of the image COMPLETELY CLEAR of any text or important graphics to allow space for video subtitles later.
+- Ensure the text is clear, professional, and readable.
+- The overall style should be high-quality, professional news broadcast.`,
             },
           ],
         },
         config: {
-          responseModalities: [Modality.IMAGE, Modality.TEXT],
+          imageConfig: {
+            aspectRatio: "1:1",
+          },
         },
       });
 
@@ -217,7 +231,7 @@ export default function ZTTeamReviewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           article_id: selected.id,
-          model: "gemini-2.0-flash-exp-image-generation",
+          model: "gemini-2.5-flash-image",
           type: "image_regen",
           input_tokens: imgUsage?.promptTokenCount || 0,
           output_tokens: imgUsage?.candidatesTokenCount || 0,
@@ -225,6 +239,35 @@ export default function ZTTeamReviewPage() {
       });
 
       /** Cập nhật image_new trong DB */
+      /** Chèn ảnh mới vào content_new + cập nhật image_new */
+      const currentContent = selected.content_new || "";
+      const cleanPath = saveJson.imagePath.split("?")[0];
+      const imageTag = `<figure class="wp-block-image aligncenter"><img src="${cleanPath}" alt="featured image" /></figure>`;
+      const contentWithoutOldImage = currentContent.replace(
+        /<figure class="wp-block-image aligncenter">[\s\S]*?<\/figure>/g,
+        "",
+      );
+      let updatedContent = currentContent;
+      if (contentWithoutOldImage) {
+        const closingTags = ["</p>", "</h2>", "</h3>", "</h4>"];
+        let firstEnd = -1;
+        let tagLen = 0;
+        for (const tag of closingTags) {
+          const idx = contentWithoutOldImage.indexOf(tag);
+          if (idx !== -1 && (firstEnd === -1 || idx < firstEnd)) {
+            firstEnd = idx;
+            tagLen = tag.length;
+          }
+        }
+        updatedContent =
+          firstEnd === -1
+            ? `${imageTag}\n${contentWithoutOldImage}`
+            : contentWithoutOldImage.substring(0, firstEnd + tagLen) +
+              "\n" +
+              imageTag +
+              "\n" +
+              contentWithoutOldImage.substring(firstEnd + tagLen);
+      }
       await fetch(`/api/queue/${selected.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -232,6 +275,7 @@ export default function ZTTeamReviewPage() {
           action: "update_generated",
           generatedContent: {
             image_new: saveJson.imagePath,
+            content_new: updatedContent || null,
           },
         }),
       });
@@ -290,7 +334,11 @@ export default function ZTTeamReviewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: selected.title_new || selected.title_original,
-          content: selected.content_html || selected.content_original || "",
+          content:
+            selected.content_new ||
+            selected.content_html ||
+            selected.content_original ||
+            "",
           featuredImageUrl: selected.image_new || selected.image_original,
           sourceUrl: selected.source_url,
         }),
@@ -306,11 +354,21 @@ export default function ZTTeamReviewPage() {
       setPublishStatus("success");
       setPublishResult(wpJson.data);
 
-      /** Cập nhật status → done sau khi đăng WP */
+      /** Lưu wp_link vào DB */
       await fetch(`/api/queue/${selected.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update_status", status: "done" }),
+        body: JSON.stringify({
+          action: "update_video_info",
+          wp_link: wpJson.data.link,
+        }),
+      });
+
+      /** Cập nhật status → approved (để sang Video page xử lý tiếp) */
+      await fetch(`/api/queue/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_status", status: "approved" }),
       });
 
       await ztteam_fetchReady();
@@ -438,6 +496,7 @@ export default function ZTTeamReviewPage() {
                     <div className="aspect-video rounded-xl overflow-hidden bg-slate-800">
                       {selected.image_new ? (
                         <img
+                          key={selected.image_new}
                           src={selected.image_new}
                           alt="Generated"
                           className="w-full h-full object-contain"
@@ -526,6 +585,21 @@ export default function ZTTeamReviewPage() {
                   </p>
                 </div>
               </div>
+              {/** Nội dung bài viết web */}
+              {selected.content_new && (
+                <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-800 bg-slate-800/30">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Nội dung bài viết web
+                    </p>
+                  </div>
+                  <div className="p-5 max-h-96 overflow-y-auto prose prose-invert prose-headings:text-white prose-p:text-slate-300 prose-strong:text-white prose-li:text-slate-300 max-w-none">
+                    <div
+                      dangerouslySetInnerHTML={{ __html: selected.content_new }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/** Publish result */}
               {publishStatus === "success" && publishResult && (

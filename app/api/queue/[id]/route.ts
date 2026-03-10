@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
+import db, {
   ztteam_getArticleById,
   ztteam_updateStatus,
   ztteam_updateGeneratedContent,
+  ztteam_updateVideoInfo,
 } from "@/lib/database";
 
 /** GET /api/queue/[id] - Lấy 1 article */
@@ -56,7 +57,11 @@ export async function PATCH(
     if (action === "update_generated" && generatedContent) {
       ztteam_updateGeneratedContent(Number(id), generatedContent);
     }
-
+    if (action === "update_video_info") {
+      ztteam_updateVideoInfo(Number(id), {
+        wp_link: body.wp_link || null,
+      });
+    }
     const updated = ztteam_getArticleById(Number(id));
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
@@ -67,7 +72,6 @@ export async function PATCH(
     );
   }
 }
-
 /** DELETE /api/queue/[id] - Xóa article */
 export async function DELETE(
   _request: NextRequest,
@@ -84,7 +88,13 @@ export async function DELETE(
       );
     }
 
-    ztteam_updateStatus(Number(id), "rejected");
+    /** Xóa api logs trước để tránh foreign key constraint */
+    db.prepare(`DELETE FROM ztteam_api_logs WHERE article_id = ?`).run(
+      Number(id),
+    );
+    /** Xóa article */
+    db.prepare(`DELETE FROM ztteam_articles WHERE id = ?`).run(Number(id));
+
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Có lỗi xảy ra";

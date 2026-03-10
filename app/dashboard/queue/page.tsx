@@ -92,19 +92,23 @@ function ZTTeamArticleModal({
               />
             )}
             <div className="flex flex-col gap-2 flex-1 min-w-0">
-              <p className="text-lg font-black leading-snug">
-                {article.title_original || "Chưa có tiêu đề"}
-              </p>
               <a
                 href={article.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-[#1337ec] hover:underline truncate"
+                className="text-lg font-black leading-snug text-white hover:text-[#1337ec] transition-colors"
               >
-                {article.source_url}
+                {article.title_original || "Chưa có tiêu đề"}
               </a>
               <p className="text-xs text-slate-500">
-                {new Date(article.created_at).toLocaleString("vi-VN")}
+                {(() => {
+                  const d = new Date(
+                    article.created_at.replace(" ", "T") + "Z",
+                  );
+                  return d.toLocaleString("vi-VN", {
+                    timeZone: "Asia/Ho_Chi_Minh",
+                  });
+                })()}
               </p>
             </div>
           </div>
@@ -223,8 +227,8 @@ export default function ZTTeamQueuePage() {
     ztteam_fetchArticles();
   }, []);
 
-  /** Xóa article */
   const ztteam_handleDelete = async (id: number) => {
+    if (!confirm("Bạn chắc chắn muốn xóa bài này?")) return;
     setDeleting(id);
     try {
       await fetch(`/api/queue/${id}`, { method: "DELETE" });
@@ -335,25 +339,28 @@ export default function ZTTeamQueuePage() {
                 </div>
 
                 {/** Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4 mb-1">
-                    <p className="text-sm font-bold truncate">
-                      {article.title_original || "Chưa có tiêu đề"}
-                    </p>
-                    <ZTTeamStatusBadge status={article.status} />
-                  </div>
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
                   <a
                     href={article.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-slate-400 hover:text-[#1337ec] transition-colors truncate block"
+                    className="text-lg font-black leading-snug text-white hover:text-[#1337ec] transition-colors"
                   >
-                    {article.source_url}
+                    {article.title_original || "Chưa có tiêu đề"}
                   </a>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {new Date(article.created_at).toLocaleString("vi-VN")}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <ZTTeamStatusBadge status={article.status} />
+                    <p className="text-xs text-slate-500">
+                      {(() => {
+                        const d = new Date(
+                          article.created_at.replace(" ", "T") + "Z",
+                        );
+                        return d.toLocaleString("vi-VN", {
+                          timeZone: "Asia/Ho_Chi_Minh",
+                        });
+                      })()}
+                    </p>
+                  </div>
                 </div>
 
                 {/** Delete button */}
