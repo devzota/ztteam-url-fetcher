@@ -28,7 +28,7 @@ async function ztteam_fetchHtml(url: string): Promise<string> {
 }
 
 /** Extract OG image từ HTML */
-function ztteam_extractOgImage($: cheerio.CheerioAPI): string | null {
+function ztteam_extractOgImage($: cheerio.Root): string | null {
   return (
     $('meta[property="og:image"]').attr("content") ||
     $('meta[name="twitter:image"]').attr("content") ||
@@ -37,7 +37,7 @@ function ztteam_extractOgImage($: cheerio.CheerioAPI): string | null {
 }
 
 /** Extract site name từ HTML */
-function ztteam_extractSiteName($: cheerio.CheerioAPI): string | null {
+function ztteam_extractSiteName($: cheerio.Root): string | null {
   return $('meta[property="og:site_name"]').attr("content") || null;
 }
 
