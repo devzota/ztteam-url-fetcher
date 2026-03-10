@@ -84,8 +84,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Có lỗi xảy ra";
+    const stack = error instanceof Error ? error.stack : "";
+    console.error("Fetch error:", message, stack);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: message, stack },
       { status: 500 },
     );
   }
